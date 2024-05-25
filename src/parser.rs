@@ -1,4 +1,4 @@
-use std::{env, iter};
+use std::{env, iter, collections::HashMap};
 
 mod datatype;
 use self::datatype::*;
@@ -48,6 +48,15 @@ impl Program {
         }
       }
 
+      if proc_tok.starts_with("v$") {
+        let val = proc_tok.strip_prefix("v$").unwrap();
+        let Some((l, r)) = val.split_once('.') else { panic!("Couldn't find path in value substitute - use '.' for path seperation") };
+
+        self.list.push(Token::PathSubst(l.to_string(), r.to_string()));
+        self.list.extend(waiting.into_iter().rev());
+        continue;
+      }
+
       proc_tok = extr_env.as_str();
 
       self.list.push(match proc_tok {
@@ -72,20 +81,24 @@ impl Program {
 
   pub fn parse(&mut self, magic_n: u32) -> Vec<u8> {
     let mut ret = Vec::from(magic_n.to_le_bytes());
-    let mut in_block = false;
+    let mut block: Option<String> = None;
+
+    let mut data: HashMap<String, HashMap<String, usize>> = HashMap::new();
 
     let mut value = 0usize;
 
     while self.index < self.list.len() {
       match &self.list[self.index] {
         Token::BlockStart => {
-          in_block = true;
           // next token is label
           let Token::Label(ref nm) = self.list[self.index + 1] else { panic!("No name provided for block"); };
+          data.insert(nm.clone(), HashMap::new());
+
+          block = Some(nm.clone());
           self.index += 1;
         },
         Token::BlockEnd => {
-          in_block = false;
+          block = None;
         },
         Token::Integer(i) => {
           if *i % 8 != 0 || *i < 1 || *i > 64 { panic!("Invalid integer width {i}"); };
@@ -93,7 +106,7 @@ impl Program {
           // name ignored
           let Token::Label(ref nm) = self.list[self.index + 1] else { panic!("No name provided for statement"); };
           let Token::Assign = self.list[self.index + 2] else { panic!("No assign token found"); };
-          
+
           match self.list[self.index + 3] {
             Token::Value(v) => { value = v; self.index += 3; },
             Token::BracketOpen => {
@@ -117,7 +130,18 @@ impl Program {
           let Token::EndLn = self.list[self.index + 1] else { panic!("No semicolon found"); };
           self.index += 1;
 
+          let listing = nm.clone();
+          data.entry(block.clone().unwrap()).and_modify(|n| { n.insert(nm.clone(), value); });
           ret.extend_from_slice(&value.to_le_bytes()[..(*i as usize / 8)]);
+
+          // data lookahead
+          for k in self.index..self.list.len() {
+            if let Token::PathSubst(l, r) = &self.list[k] {
+              if *l == block.clone().unwrap() && *r == listing {
+                self.list[k] = Token::Value(*data.get(l).unwrap().get(r).unwrap());
+              }
+            }
+          }
         },
         Token::Command(com) => {
           match com.as_str() {

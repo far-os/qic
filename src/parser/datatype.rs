@@ -19,4 +19,5 @@ pub enum Token {
   BracketOpen,
   BracketClose,
   EndLn,
+  PathSubst(String, String),
 }
