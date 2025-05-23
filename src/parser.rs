@@ -80,12 +80,14 @@ impl Program {
   }
 
   pub fn parse(&mut self, magic_n: u32) -> Vec<u8> {
-    let mut ret = Vec::from(magic_n.to_le_bytes());
+    let mut ret = Vec::new(); //Vec::from(magic_n.to_le_bytes());
     let mut block: Option<String> = None;
 
     let mut data: HashMap<String, HashMap<String, usize>> = HashMap::new();
 
     let mut value = 0usize;
+
+    let mut magic = true;
 
     while self.index < self.list.len() {
       match &self.list[self.index] {
@@ -149,7 +151,9 @@ impl Program {
               let Token::Value(wdt) = self.list[self.index + 1] else { panic!("Expected align width") };
               ret.extend(iter::repeat(0).take(wdt - (ret.len() % wdt)));
               self.index += 1;
-            }
+            },
+            "nomagic" => magic = false,
+            "magic" => magic = true,
             _ => panic!("Unknown command {com}"),
           }
         }
@@ -159,7 +163,11 @@ impl Program {
       self.index += 1;
     }
 
-    ret
+    if magic {
+      ret.splice(0..0, magic_n.to_le_bytes()).collect()
+    } else {
+      ret
+    }
   }
 }
 
