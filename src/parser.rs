@@ -193,12 +193,7 @@ impl Program {
 
       self.index += 1;
     }
-
-    if magic {
-      ret.splice(0..0, magic_n.to_le_bytes()).collect()
-    } else {
-      ret
-    }
+    ret
   }
 }
 
