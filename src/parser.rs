@@ -7,6 +7,7 @@ use self::datatype::*;
 pub struct Program {
   pub index: usize,
   pub list: Vec<Token>,
+  pub magic: bool,
 }
 
 impl Program {
@@ -14,6 +15,7 @@ impl Program {
     Self {
       index: 0,
       list: Vec::new(),
+      magic: true,
     }
   }
 
@@ -72,6 +74,8 @@ impl Program {
         "-" => Token::Operation(Op::Sub),
         "*" => Token::Operation(Op::Mul),
         "/" => Token::Operation(Op::Div),
+        "rept" => Token::ReptStart,
+        "endrept" => Token::ReptEnd,
         other => Token::Label(other.to_string()),
       });
 
@@ -79,9 +83,11 @@ impl Program {
     }
   }
 
-  pub fn parse(&mut self, magic_n: u32) -> Vec<u8> {
+  pub fn parse(&mut self) -> Vec<u8> {
     let mut ret = Vec::new(); //Vec::from(magic_n.to_le_bytes());
     let mut block: Option<String> = None;
+    let mut repetit_save: Vec<u8> = Vec::new();
+    let mut repetit_by: Option<usize> = None;
 
     let mut data: HashMap<String, HashMap<String, usize>> = HashMap::new();
 
@@ -92,6 +98,10 @@ impl Program {
     while self.index < self.list.len() {
       match &self.list[self.index] {
         Token::BlockStart => {
+          if block.is_some() {
+            panic!("Cannot nest type block");
+          }
+
           // next token is label
           let Token::Label(ref nm) = self.list[self.index + 1] else { panic!("No name provided for block"); };
           data.insert(nm.clone(), HashMap::new());
@@ -101,6 +111,27 @@ impl Program {
         },
         Token::BlockEnd => {
           block = None;
+        },
+        Token::ReptStart => {
+          // TODO make better
+          if repetit_by.is_some() {
+            panic!("Cannot nest type rept");
+          }
+
+          // next token is number
+          let Token::Value(u) = self.list[self.index + 1] else { panic!("No repeat count provided"); };
+          repetit_by = Some(u);
+          (repetit_save, ret) = (ret, repetit_save); // this is very naive. so our temporary repetition buffer IS THE MAIN BUFFER. the rest of the main buffer is moved out of the way. any other way would make everything else more complicated.
+
+          self.index += 1;
+        },
+        Token::ReptEnd => {
+          let Some(u) = repetit_by else { panic!("Invalid repeat end") };
+          for _ in 0..u {
+            repetit_save.extend(ret.clone());
+          }
+
+          (repetit_save, ret) = (ret, repetit_save); // undo what we did earlier. see above as to why i hate this code
         },
         Token::Integer(i) => {
           if *i % 8 != 0 || *i < 1 || *i > 64 { panic!("Invalid integer width {i}"); };
@@ -152,8 +183,8 @@ impl Program {
               ret.extend(iter::repeat(0).take(wdt - (ret.len() % wdt)));
               self.index += 1;
             },
-            "nomagic" => magic = false,
-            "magic" => magic = true,
+            "nomagic" => self.magic = false,
+            "magic" => self.magic = true,
             _ => panic!("Unknown command {com}"),
           }
         }

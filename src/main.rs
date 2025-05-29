@@ -35,12 +35,15 @@ fn main() {
   let mut runner = Program::new();
   runner.lexer(feed);
 
-  let data = runner.parse(MAGIC);
+  let data = runner.parse();
 
   let Ok(mut out_f) = File::create(format!("{fileNm}.{OUT_EXT}")) else {
     eprintln!("Unable to create file {fileNm}.{OUT_EXT}");
     return;
   };
 
+  if runner.magic {
+    out_f.write(&MAGIC.to_le_bytes()).expect("Could not write to file");
+  }
   out_f.write(&data).expect("Could not write to file");
 }
